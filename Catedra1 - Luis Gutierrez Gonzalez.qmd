@@ -1,0 +1,593 @@
+---
+title: "Catedra 1"
+author: "Luis Gutierrez"
+format: pdf
+---
+
+# 1- Definición del Problema
+
+## Pregunta de Investigación:
+
+1.El Objetivo de la investigacion es verificar si existe alguna diferencia significativa entre la
+esperanza de vida (lifeExp) entre continentes a o largo del tiempo, ¿como se relaciona esta
+(esperanza de vida) con el PIB per cápita (gdpPercap) y la población (pop)?
+
+2. Crear un modelo de Machine learnig para predecir la esperanza de vida dado nuevos datos
+que tratare de recopilar desde el 2007 en adelante, para esto aplicaremos un modelo de
+randomforest.
+
+Nota: En términos generales, la fórmula del modelo sería similar a una regresión lineal
+tradicional:
+
+$𝑙𝑖𝑓𝑒𝐸𝑥𝑝 => 𝑔𝑑𝑝𝑃 𝑒𝑟𝑐𝑎𝑝 + 𝑝𝑜𝑝 + 𝑐𝑜𝑛𝑡𝑖𝑛𝑒𝑛�$
+
+
+**Random Forest** **no genera una sola fórmula matemática como una regresión lineal.** En su lugar, construye muchos árboles de decisión que hacen predicciones y combina sus
+resultados (por promedio) para obtener el valor final.
+
+## Variables Cuantitativas:
+
+-   lifeExp: esperanza de vida
+
+-   gdpPercap: PIB per cápita
+
+-   pop: población total
+
+## 
+Variables Cualitativas:
+
+-   continet: continente
+
+-   country: país
+
+## 
+Parámetros a estimar:
+
+Promedio de esperanza de vida y PIB per cápita por continente y año.
+
+------------------------------------------------------------------------
+
+# 
+2- Introducción
+
+El conjunto de datos para el estudio fueron obtenidos de una libreria de R llamada gapminder,
+los datos contienen información socioeconómica de diversos países del mundo entre 1952 y
+2007. Las variables incluyen esperanza de vida, población y PIB per cápita y agrupadas por
+país y año.
+
+## Descripción de los datos:
+
+1.Cargar librerias para el estudio
+
+```{r}
+library(gapminder)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(stringr)
+library(forcats)
+library(randomForest)
+
+```
+
+2\. Dimensión de los datos
+
+```{r}
+# Saber la dimension del dataset con dim()
+dim(gapminder)
+```
+
+```{r}
+# Usando otra libreria llamada dplyr y la funcion glimse
+glimpse(gapminder)
+```
+
+```{r}
+# Utilizando funciones que retornan filas y columnas
+nrow(gapminder) # Número de filas
+```
+
+```{r}
+ncol(gapminder) # Número de columnas
+```
+
+3\. Periodo
+
+```{r}
+# Utilizar la funcion unique que es de los paquetes base de R
+unique(gapminder$year)
+```
+
+4\. Cobertura de países
+
+```{r}
+# Contar la cantidad de paises de la columna country, de manera unica
+n_distinct(gapminder$country)
+```
+
+### Variables clave:
+
+• country: nombre del país
+• continent: continente
+• year: año
+• lifeExp: esperanza de vida
+• pop: población total
+• gdpPercap: PIB per cápita
+
+#### 
+No hay datos faltantes en este dataset
+
+```{r}
+# saber si hay nulos en el datat la funcion retorna True o False
+any(is.na(gapminder))
+
+```
+
+#### Nombres de columnas del dataset
+
+```{r}
+names(gapminder)
+```
+
+# 3- Preprocesamiento de datos
+
+Para este proceso crearemos una funcion que sirva para cargar el dataset y realizar limpieza
+del mismo a pesar de que no hay valores NaN
+
+```{r}
+# Función para cargar y limpiar el dataset
+cargar_y_limpiar <- function() {
+df <- gapminder %>%
+filter(!is.na(lifeExp), !is.na(gdpPercap), !is.na(pop)) %>%
+mutate(country = str_trim(country))
+return(df)
+}
+datos <- cargar_y_limpiar()
+glimpse(datos)
+```
+
+# 4- Análisis Exploratorio de Datos (EDA)
+
+A continuación crearemos 2 funciones una para variables cualitativas y otra para variables cuantiativas y asi poder aplicar un analisis descriptivo a cada una de las variables (atributos), la idea es que esta función reciba la columna a estudiar y me retorne graficos y otros estadisticos.
+
+### Función para variables cualitativas
+
+```{r}
+eda_cualitativa <- function(df, col_name) {
+col <- df[[col_name]]
+cat("=== Análisis EDA Cualitativo para:", col_name, "===\n")
+# Tipo de dato
+cat("\n Tipo de dato:\n")
+print(class(col))
+# Valores nulos
+cat("\n Valores nulos:\n")
+na_count <- sum(is.na(col))
+cat("Cantidad:", na_count, "\n")
+cat("Porcentaje:", round(100 * na_count / length(col), 2), "%\n")
+# Valores únicos
+cat("\n Valores únicos:\n")
+print(length(unique(col)))
+# Duplicados
+cat("\n Registros duplicados en la columna:\n")
+print(sum(duplicated(col)))
+# Frecuencias
+cat("\n Frecuencias de categorías:\n")
+print(sort(table(col), decreasing = TRUE))
+cat("\n Top 10 categorías:\n")
+print(head(sort(table(col), decreasing = TRUE), 10))
+# Gráfico de barras
+print(
+ggplot(df %>% count(!!sym(col_name)) %>%
+mutate(!!sym(col_name) := fct_reorder(!!sym(col_name), n)),
+aes(x = !!sym(col_name), y = n)) +
+geom_col(fill = "coral") +
+coord_flip() +
+labs(title = paste("Frecuencia de categorías en", col_name),
+x = col_name, y = "Frecuencia") +
+theme_minimal()
+)
+}
+```
+
+### Función para variables cuantitativa
+
+```{r}
+
+eda_cuantitativa <- function(df, col_name) {
+col <- df[[col_name]]
+cat("=== Análisis EDA Cuantitativo para:", col_name, "===\n")
+# Tipo de dato
+cat("\n Tipo de dato:\n")
+print(class(col))
+# Valores nulos
+cat("\n Valores nulos:\n")
+na_count <- sum(is.na(col))
+cat("Cantidad:", na_count, "\n")
+cat("Porcentaje:", round(100 * na_count / length(col), 2), "%\n")
+# Valores únicos
+cat("\n Valores únicos:\n")
+cat("\n Registros duplicados en la columna:\n")
+print(sum(duplicated(col)))
+# Estadísticas
+cat("\n Estadísticas descriptivas:\n")
+print(summary(col))
+cat("\n Percentiles (5, 25, 50, 75, 95):\n")
+print(quantile(col, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE))
+# Histograma
+print(
+ggplot(df, aes(x = !!sym(col_name))) +
+geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+theme_minimal() +
+labs(title = paste("Histograma de", col_name), x = col_name)
+)
+# Boxplot
+print(
+ggplot(df, aes(y = !!sym(col_name))) +
+geom_boxplot(fill = "lightgreen") +
+theme_minimal() +
+labs(title = paste("Boxplot de", col_name), y = col_name)
+)
+}
+```
+
+### la siguiente función es la que deriva a las 2 funciones anteriores dependiendo del tipo de
+variable
+
+```{r}
+eda_columna <- function(df, col_name) {
+col <- df[[col_name]]
+if (is.numeric(col)) {
+eda_cuantitativa(df, col_name)
+} else if (is.character(col) || is.factor(col)) {
+eda_cualitativa(df, col_name)
+} else if (inherits(col, "Date") || inherits(col, "POSIXct")){
+  cat("=== Análisis EDA para:", col_name, "(Fecha) ===\n")
+cat("\n Tipo de dato:\n")
+print(class(col))
+cat("\n Valores nulos:\n")
+na_count <- sum(is.na(col))
+cat("Cantidad:", na_count, "\n")
+cat("Porcentaje:", round(100 * na_count / length(col), 2), "%\n")
+cat("\n Rango de fechas:\n")
+print(range(col, na.rm = TRUE))
+print(
+ggplot(df, aes(x = !!sym(col_name))) +
+geom_histogram(bins = 30, fill = "gray") +
+theme_minimal() +
+labs(title = paste("Distribución temporal de", col_name), x = col_name)
+)
+} else {
+cat("\n Tipo de dato no soportado actualmente.\n")
+}
+}
+```
+
+### Usar la funcion en una variable cualitata:
+
+#### la función a la columna \"country\" (nombre del país)
+
+En este ejemplo la columna nombre pais tiene 12 repeticiones de cada pais dado que son 12 años por lo cual la mayoria de los graficos y estadisticos no entregan mucha información, veremos como se comportan las otras columnas, ademas el grafico de barra final esta sobrepoblado dado que son muchos paises y todos se repiten 12 veces.
+
+```{r}
+# Para las variables categoricas (cualitivativas) las debo transformar
+datos$country <- as.factor(datos$country) # para probar categórica
+
+# Luego hacemos un llamado a la funcion eda columna
+eda_columna(datos, "country") # Variable categór
+```
+
+#### Aplicar la función a la columna \"continent\" (continente)
+
+En esta columna o atributo se tendra la frecuencia segun la cantidad de paises que existe por continente y los años de estudio que son 12 años, ejemplo Africa tiene 52 paises, por lo cual su frencuencia de datos seria 52\*12=624 lo cual se muestra en el grafico.
+
+```{r}
+# Para las variables categoricas (cualitivativas) las debo transformar
+datos$continent <- as.factor(datos$continent) # para probar categórica
+# Luego hacemos un llamado a la funcion eda columna
+eda_columna(datos, "continent") # Variable categórica
+```
+
+#### 
+Aplicar la función a la columna \"year\" (año)
+
+```{r}
+# En el caso de variables numericas solo llamamos a la funcion sin transformar nada
+# Luego hacemos un llamado a la funcion eda columna
+eda_columna(datos, "year")
+
+
+```
+
+#### Aplicar la función a la columna \"lifeExp\" (esperanza de vida)
+
+```{r}
+# En el caso de variables numericas solo llamamos a la funcion sin transformar nada
+# Luego hacemos un llamado a la funcion eda columna
+eda_columna(datos, "lifeExp")
+```
+
+#### 
+Aplicar la función a la columna \"pop\" (población total)
+
+```{r}
+# En el caso de variables numericas solo llamamos a la funcion sin transformar nada
+# Luego hacemos un llamado a la funcion eda columna
+eda_columna(datos, "pop")
+```
+
+#### Aplicar la función a la columna \"gdpPercap\" (PIB per cápita)
+
+```{r}
+# En el caso de variables numericas solo llamamos a la funcion sin transformar nada
+# Luego hacemos un llamado a la funcion eda columna
+eda_columna(datos, "gdpPercap")
+```
+
+#### 4.1 Esperanza de vida por continente
+
+```{r}
+# Calcular promedio por año y continente
+vida_media <- datos %>%
+group_by(continent, year) %>%
+summarise(lifeExp_mean = mean(lifeExp), .groups = "drop")
+# Gráfico con ggplot2 clásico
+ggplot(vida_media, aes(x = year, y = lifeExp_mean, color = continent)) +
+geom_line(size = 1.2) +
+labs(title = "Esperanza de vida promedio por continente",
+x = "Año",
+y = "Esperanza de vida") +
+theme_minimal()
+```
+
+#### 
+
+Interpretación:
+
+En este gráfico observamos que la esperanza de vida ha aumentado consistentemente
+en todos los continentes desde 1952 hasta 2007.
+• Oceanía y Europa mantienen los niveles más altos de esperanza de vida durante todo el periodo.
+• África, en cambio, muestra la esperanza de vida más baja y un crecimiento más
+lento. En algunas décadas incluso se ve una ligera caída, probablemente relacionada con enfermedades o conflictos (como la epidemia de VIH en los 90s).
+• Esto sugiere una brecha significativa en la salud y el desarrollo humano entre continentes.
+
+#### 
+4.2 PIB per cápita a través del tiempo
+
+```{r}
+pib_media <- datos %>%
+group_by(continent, year) %>%
+summarise(gdpPercap_mean = mean(gdpPercap), .groups = "drop")
+ggplot(pib_media, aes(x = year, y = gdpPercap_mean, color = continent)) +
+geom_line(size = 1.2) +
+labs(title = "PIB per cápita promedio por continente",
+     x = "Año",
+y = "PIB per cápita (USD)") +
+theme_minimal()
+
+```
+
+#### 
+
+Interpretación:
+
+Este gráfico muestra la evolución del PIB per cápita (una medida del desarrollo económico) por continente.
+• América y Europa presentan un aumento sostenido, especialmente Europa, que supera ampliamente a los otros continentes hacia 2007.
+• África mantiene un PIB per cápita mucho menor y con menor crecimiento, evidenciando desigualdades económicas estructurales.
+• Oceanía, aunque tiene pocos países representados, muestra valores altos y estables.
+Esto refleja que el crecimiento económico es desigual a nivel global, lo cual puede estar vinculado con diferencias en acceso a educación, salud, comercio y recursos naturales.
+
+#### 
+4.3 Distribución de la población año 2007
+
+```{r}
+datos_2007 <- filter(datos, year == 2007)
+ggplot(datos_2007, aes(x = continent, y = pop / 1e6, fill = continent)) +
+geom_boxplot() +
+labs(title = "Distribución de la población por continente (2007)",
+x = "Continente",
+y = "Población (millones)") +
+theme_minimal()
+```
+
+#### 
+
+Interpretación:
+
+Este boxplot muestra la distribución de la población por país dentro de cada continente en 2007.
+• Asia tiene una alta variabilidad poblacional, con algunos países extremadamente
+poblados como China e India, y otros con mucha menos población.
+• Europa y América tienen poblaciones más homogéneas entre países.
+• Oceanía presenta valores bajos, y África muestra también una gran dispersión.
+Esto refleja que dentro de cada continente hay países con características muy distintas en términos de población, lo que puede tener un impacto en el desarrollo y políticas públicas.
+
+#### 
+4.4 Relación entre el PIB per cápita y la esperanza de vida
+
+```{r}
+ggplot(datos_2007, aes(x = gdpPercap, y = lifeExp, color = continent)) +
+geom_point(alpha = 0.6, size = 2.5) +
+geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+scale_x_log10() +
+labs(title = "Relación entre PIB per cápita y esperanza de vida (2007)",
+x = "PIB per cápita (escala logarítmica)",
+y = "Esperanza de vida") +
+theme_minimal()
+```
+
+Este gráfico muestra la relación entre el PIB per cápita y la esperanza de vida en el
+año 2007.
+• Se observa una fuerte correlación positiva: a mayor PIB per cápita, mayor esperanza
+de vida.
+• Los países con bajo PIB per cápita (a la izquierda) tienden a tener menor esperanza de vida, mientras que los países más ricos viven más.
+• Sin embargo, se nota una desaceleración del crecimiento de la esperanza de vida
+en países con PIB muy alto, lo que indica un punto de saturación.
+• También se observan diferencias por continente, mostrando que los países europeos
+y oceánicos concentran altos valores en ambas variables.
+Este gráfico respalda la idea de que el desarrollo económico está fuertemente asociado con mejores condiciones de salud y longevidad, pero no es el único factor.
+
+# 
+5- Planificación del proyecto de Ciencia de datos
+
+Mi idea es realizar un modelo de machine learnig para predecir una variable del modelo como la esperanza de vida, para este desarrollo utilizaremos el paquete de R llamado RandomForest, si nos da el tiempo del proyecto quizas comparar los resultado con otro modelo.
+
+### 
+1. **División de datos en entrenamiento y prueba**
+
+```{r}
+# Filtrar datos hasta 2002 para entrenamiento, dejar 2007 para prueba
+train_data <- datos %>% filter(year <= 2002)
+test_data <- datos %>% filter(year == 2007)
+
+# Verificar dimensiones
+dim(train_data)
+dim(test_data)
+```
+
+### **2. Construcción del modelo Random Forest y evaluacion**
+
+```{r}
+# Modelo Random Forest con variables seleccionadas
+set.seed(123)  # Para reproducibilidad
+rf_model <- randomForest(
+  lifeExp ~ gdpPercap + pop + continent + year,
+  data = train_data,
+  ntree = 500,       # Número de árboles
+  mtry = 2,          # Variables consideradas en cada división
+  importance = TRUE, # Para calcular importancia de variables
+  na.action = na.omit,
+  keep.forest = TRUE # Para mantener el modelo para predicciones
+)
+
+# Ver resumen del modelo
+print(rf_model)
+
+# Evaluación del modelo sin caret
+evaluar_modelo <- function(modelo, datos_test) {
+  pred <- predict(modelo, datos_test)
+  real <- datos_test$lifeExp
+  
+  # Calcular métricas manualmente
+  rmse <- sqrt(mean((pred - real)^2))
+  r2 <- 1 - (sum((real-pred)^2)/sum((real-mean(real))^2))
+  mae <- mean(abs(pred - real))
+  
+  cat("Métricas de evaluación:\n")
+  cat("RMSE:", round(rmse, 3), "\n")
+  cat("R²:", round(r2, 3), "\n")
+  cat("MAE:", round(mae, 3), "\n")
+  
+  return(data.frame(Predicho = pred, Real = real))
+}
+
+# Evaluar el modelo
+resultados <- evaluar_modelo(rf_model, test_data)
+
+# Gráfico de valores reales vs predichos
+ggplot(resultados, aes(x = Real, y = Predicho)) +
+  geom_point(alpha = 0.6, color = "blue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Random Forest: Valores reales vs predichos",
+       x = "Esperanza de vida real",
+       y = "Esperanza de vida predicha") +
+  theme_minimal()
+
+# Optimización de hiperparámetros sin caret
+optimizar_rf <- function(train_data, ntree_range = c(500, 1000), mtry_range = 2:4) {
+  resultados <- data.frame()
+  
+  for (nt in ntree_range) {
+    for (mt in mtry_range) {
+      set.seed(123)
+      modelo <- randomForest(
+        lifeExp ~ gdpPercap + pop + continent + year,
+        data = train_data,
+        ntree = nt,
+        mtry = mt
+      )
+      
+      pred <- predict(modelo, train_data)
+      rmse <- sqrt(mean((pred - train_data$lifeExp)^2))
+      
+      resultados <- rbind(resultados, data.frame(ntree = nt, mtry = mt, RMSE = rmse))
+    }
+  }
+  
+  return(resultados)
+}
+
+# Ejecutar optimización
+resultados_opt <- optimizar_rf(train_data)
+print(resultados_opt)
+
+# Seleccionar mejor combinación
+mejor_combinacion <- resultados_opt[which.min(resultados_opt$RMSE), ]
+cat("\nMejor combinación de parámetros:\n")
+print(mejor_combinacion)
+```
+
+### **3. Importancia de variables**
+
+```{r}
+# Importancia de variables
+importance_df <- as.data.frame(importance(rf_model))
+importance_df$Variable <- rownames(importance_df)
+
+# Gráfico de importancia
+ggplot(importance_df, aes(x = reorder(Variable, `%IncMSE`), y = `%IncMSE`)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Importancia de variables en el modelo Random Forest",
+       x = "Variable",
+       y = "Incremento en MSE (%)") +
+  theme_minimal()
+```
+
+### **4. Interpretación de resultados**
+
+Los resultados del modelo Random Forest mostrarán:
+
+1.  **Exactitud del modelo**: El R² y RMSE indicarán cuán bien el modelo predice la esperanza de vida.
+
+2.  **Importancia de variables**: El análisis de importancia revelará qué variables (PIB per cápita, población, continente o año) tienen mayor impacto en la predicción.
+
+### 
+
+
+
+
+
+
+
+# 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
